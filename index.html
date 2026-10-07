@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Firewall Log Threat Analyzer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ===== CSS VARIABLES ===== */
+:root {
+  --bg-primary:   #0d1117;
+  --bg-secondary: #161b22;
+  --bg-card:      #1c2333;
+  --bg-hover:     #21262d;
+  --border:       #30363d;
+  --accent:       #58a6ff;
+  --accent2:      #3fb950;
+  --danger:       #f85149;
+  --warning:      #d29922;
+  --info:         #58a6ff;
+  --purple:       #bc8cff;
+  --text:         #e6edf3;
+  --text-muted:   #8b949e;
+  --sidebar-w:    240px;
+  --radius:       8px;
+  --shadow:       0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg-primary);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+a { color: var(--accent); text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+input, select { font-family: inherit; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ===== LAYOUT ===== */
+#app { display: flex; min-height: 100vh; }
+
+/* ===== SIDEBAR ===== */
+#sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  z-index: 100;
+  transition: transform .3s ease;
+}
+#sidebar .sidebar-logo {
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid var(--border);
+}
+#sidebar .sidebar-logo .logo-icon {
+  font-size: 24px; margin-bottom: 6px;
+}
+#sidebar .sidebar-logo h2 {
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 1px;
+  line-height: 1.3;
+}
+#sidebar nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+#sidebar nav .nav-section {
+  font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-muted);
+  padding: 12px 8px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: var(--radius);
+  cursor: pointer; color: var(--text-muted);
+  font-size: 13.5px; font-weight: 500;
+  transition: background .15s, color .15s;
+  margin-bottom: 2px;
+}
+.nav-item:hover { background: var(--bg-hover); color: var(--text); }
+.nav-item.active { background: rgba(88,166,255,.12); color: var(--accent); }
+.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.sidebar-footer {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted);
+}
+#live-badge {
+  display: none; align-items: center; gap: 6px;
+  background: rgba(248,81,73,.15); color: var(--danger);
+  border: 1px solid rgba(248,81,73,.3);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: 11px; font-weight: 700;
+  margin-bottom: 8px;
+}
+#live-badge.visible { display: flex; }
+#live-badge .blink {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--danger);
+  animation: blink 1s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ===== MAIN CONTENT ===== */
+#main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ===== TOP BAR ===== */
+#topbar {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+}
+#topbar .top-left { display: flex; align-items: center; gap: 12px; }
+#hamburger {
+  display: none; background: none; border: none;
+  color: var(--text); font-size: 20px; padding: 4px;
+}
+#topbar h1 {
+  font-size: 17px; font-weight: 700; color: var(--text);
+}
+#topbar p { font-size: 12px; color: var(--text-muted); }
+#topbar .top-right { display: flex; align-items: center; gap: 10px; }
+.btn {
+  padding: 7px 16px; border-radius: var(--radius);
+  border: 1px solid var(--border); font-size: 13px; font-weight: 500;
+  background: var(--bg-card); color: var(--text);
+  transition: background .15s, border-color .15s;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.btn-primary {
+  background: var(--accent); color: #000;
+  border-color: var(--accent);
+}
+.btn-primary:hover { background: #79b8ff; border-color: #79b8ff; }
+.btn-danger { background: rgba(248,81,73,.15); color: var(--danger); border-color: rgba(248,81,73,.3); }
+.btn-danger:hover { background: rgba(248,81,73,.25); }
+.btn-success { background: rgba(63,185,80,.15); color: var(--accent2); border-color: rgba(63,185,80,.3); }
+.btn-success:hover { background: rgba(63,185,80,.25); }
+.btn-warning { background: rgba(210,153,34,.15); color: var(--warning); border-color: rgba(210,153,34,.3); }
+.btn-warning:hover { background: rgba(210,153,34,.25); }
+
+/* ===== CONTENT AREA ===== */
+#content { padding: 24px; flex: 1; }
+
+/* ===== SECTIONS ===== */
+.section { display: none; }
+.section.active { display: block; animation: fadeIn .2s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* ===== PAGE HEADER ===== */
+.page-header { margin-bottom: 20px; }
+.page-header h2 { font-size: 20px; font-weight: 700; }
+.page-header p { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+/* ===== STAT CARDS ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px; margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  transition: border-color .2s, transform .2s;
+}
+.stat-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.stat-card .stat-icon { font-size: 22px; margin-bottom: 8px; }
+.stat-card .stat-value { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.stat-card .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; margin-top: 4px; }
+.stat-card.c-normal  .stat-value { color: var(--accent2); }
+.stat-card.c-sus     .stat-value { color: var(--warning); }
+.stat-card.c-crit    .stat-value { color: var(--danger); }
+.stat-card.c-blue    .stat-value { color: var(--accent); }
+.stat-card.c-purple  .stat-value { color: var(--purple); }
+
+/* ===== CARDS ===== */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+  margin-bottom: 20px;
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.card-header h3 { font-size: 15px; font-weight: 600; }
+
+/* ===== CHARTS GRID ===== */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px; margin-bottom: 24px;
+}
+.chart-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.chart-card h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .6px; }
+.chart-card canvas { max-height: 220px; }
+
+/* ===== UPLOAD ZONE ===== */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 40px; text-align: center;
+  cursor: pointer; transition: border-color .2s, background .2s;
+  margin-bottom: 16px;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent); background: rgba(88,166,255,.04);
+}
+.upload-zone .uz-icon { font-size: 40px; margin-bottom: 10px; }
+.upload-zone h3 { font-size: 15px; margin-bottom: 4px; }
+.upload-zone p { color: var(--text-muted); font-size: 12px; }
+#file-input { display: none; }
+
+.file-info {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  display: none; margin-bottom: 16px;
+}
+.file-info.show { display: block; }
+.file-info table { width: 100%; border-collapse: collapse; }
+.file-info td { padding: 4px 8px; font-size: 13px; }
+.file-info td:first-child { color: var(--text-muted); width: 140px; }
+
+.upload-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ===== FILTERS BAR ===== */
+.filters-bar {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px; align-items: center;
+}
+.filters-bar input, .filters-bar select {
+  padding: 7px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary); color: var(--text);
+  font-size: 13px; outline: none;
+  transition: border-color .15s;
+}
+.filters-bar input:focus, .filters-bar select:focus { border-color: var(--accent); }
+.filters-bar input { width: 200px; }
+
+/* ===== TABLE ===== */
+.table-wrap { overflow-x: auto; }
+table.data-table {
+  width: 100%; border-collapse: collapse; font-size: 12.5px;
+}
+.data-table th {
+  background: var(--bg-secondary); color: var(--text-muted);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+  padding: 9px 12px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; cursor: pointer;
+  user-select: none; white-space: nowrap;
+}
+.data-table th:hover { color: var(--text); }
+.data-table td {
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table tr:hover td { background: var(--bg-hover); }
+.data-table tr.clickable { cursor: pointer; }
+
+/* ===== BADGES ===== */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 12px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.badge-low     { background: rgba(63,185,80,.15);  color: var(--accent2); border: 1px solid rgba(63,185,80,.3); }
+.badge-medium  { background: rgba(210,153,34,.15); color: var(--warning); border: 1px solid rgba(210,153,34,.3); }
+.badge-high    { background: rgba(248,131,0,.15);  color: #f08000;        border: 1px solid rgba(248,131,0,.3); }
+.badge-critical{ background: rgba(248,81,73,.15);  color: var(--danger);  border: 1px solid rgba(248,81,73,.3); }
+.badge-normal  { background: rgba(88,166,255,.12); color: var(--accent);  border: 1px solid rgba(88,166,255,.3); }
+.badge-allow   { background: rgba(63,185,80,.12);  color: var(--accent2); border: 1px solid rgba(63,185,80,.25); }
+.badge-deny    { background: rgba(248,81,73,.12);  color: var(--danger);  border: 1px solid rgba(248,81,73,.25); }
+
+/* ===== RISK BAR ===== */
+.risk-bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 100px; }
+.risk-bar-track {
+  flex: 1; height: 6px; background: var(--bg-secondary);
+  border-radius: 3px; overflow: hidden;
+}
+.risk-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width .4s ease;
+}
+.risk-val { font-size: 12px; font-weight: 600; min-width: 28px; text-align: right; }
+
+/* ===== PAGINATION ===== */
+.pagination {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 14px; flex-wrap: wrap;
+}
+.pagination button {
+  padding: 5px 10px; border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary); color: var(--text);
+  font-size: 12px;
+}
+.pagination button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.pagination button:hover:not(.active) { border-color: var(--accent); }
+.pagination .pg-info { font-size: 12px; color: var(--text-muted); margin-left: 6px; }
+
+/* ===== IP ANALYSIS CARDS ===== */
+.ip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.ip-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  transition: border-color .2s;
+}
+.ip-card:hover { border-color: var(--accent); }
+.ip-card .ip-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 12px;
+}
+.ip-card .ip-addr { font-size: 15px; font-weight: 700; color: var(--accent); }
+.ip-card .ip-stats { font-size: 12px; color: var(--text-muted); line-height: 1.8; }
+.ip-card .ip-stat-row { display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.ip-card .ip-stat-row span { font-size: 12px; color: var(--text-muted); }
+.ip-card .ip-stat-row strong { font-size: 13px; }
+
+/* ===== MODAL ===== */
+#modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.7); z-index: 1000;
+  align-items: center; justify-content: center; padding: 20px;
+}
+#modal-overlay.show { display: flex; }
+#modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; max-width: 640px; width: 100%;
+  max-height: 90vh; overflow-y: auto; padding: 24px;
+  box-shadow: var(--shadow);
+  animation: modalIn .2s ease;
+}
+@keyframes modalIn { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { font-size: 17px; font-weight: 700; }
+#modal-close {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 22px; line-height: 1; padding: 2px 6px;
+}
+#modal-close:hover { color: var(--text); }
+.modal-section { margin-bottom: 18px; }
+.modal-section h4 {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.modal-kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 13px; }
+.modal-kv .k { color: var(--text-muted); }
+.modal-kv .v { color: var(--text); font-weight: 500; word-break: break-all; }
+.modal-box {
+  background: var(--bg-secondary); border-radius: var(--radius);
+  padding: 12px 14px; font-size: 13px; color: var(--text-muted);
+  line-height: 1.7; border-left: 3px solid var(--accent);
+}
+.modal-box.danger { border-left-color: var(--danger); }
+.rec-list { list-style: none; padding: 0; }
+.rec-list li {
+  font-size: 13px; color: var(--text-muted); padding: 5px 0;
+  padding-left: 16px; position: relative;
+}
+.rec-list li::before {
+  content: '›'; position: absolute; left: 0;
+  color: var(--accent); font-size: 15px;
+}
+
+/* ===== REPORT SECTION ===== */
+.report-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px; margin-bottom: 20px;
+}
+.report-item {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.report-item .ri-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .6px; margin-bottom: 6px; }
+.report-item .ri-value { font-size: 20px; font-weight: 700; }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: var(--text-muted);
+}
+.empty-state .es-icon { font-size: 44px; margin-bottom: 14px; }
+.empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+.empty-state p { font-size: 13px; }
+
+/* ===== ABOUT ===== */
+.about-wrap { max-width: 720px; }
+.about-wrap h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; color: var(--accent); }
+.about-wrap p { color: var(--text-muted); font-size: 13.5px; line-height: 1.8; margin-bottom: 16px; }
+.tech-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.tech-pill {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 14px; font-size: 12px;
+}
+.warn-box {
+  background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.3);
+  border-radius: var(--radius); padding: 14px 16px;
+  color: var(--warning); font-size: 13px; line-height: 1.7;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  #sidebar {
+    transform: translateX(-100%);
+  }
+  #sidebar.open { transform: translateX(0); }
+  #main { margin-left: 0; }
+  #hamburger { display: block; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .charts-grid { grid-template-columns: 1fr; }
+  .ip-grid { grid-template-columns: 1fr; }
+  .report-grid { grid-template-columns: repeat(2, 1fr); }
+  .filters-bar input { width: 100%; }
+}
+@media (max-width: 420px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .report-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== OVERLAY for mobile ===== */
+#sidebar-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 99;
+}
+#sidebar-overlay.show { display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛡️</div>
+      <h2>Firewall Log<br>Threat Analyzer</h2>
+    </div>
+    <nav>
+      <div class="nav-section">Main</div>
+      <div class="nav-item active" data-section="dashboard">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-section="upload">
+        <span class="nav-icon">📁</span> Upload Logs
+      </div>
+      <div class="nav-section">Analysis</div>
+      <div class="nav-item" data-section="logs">
+        <span class="nav-icon">📋</span> Log Analysis
+      </div>
+      <div class="nav-item" data-section="threats">
+        <span class="nav-icon">⚠️</span> Threats
+      </div>
+      <div class="nav-item" data-section="ipanalysis">
+        <span class="nav-icon">🌐</span> IP Analysis
+      </div>
+      <div class="nav-section">Output</div>
+      <div class="nav-item" data-section="reports">
+        <span class="nav-icon">📄</span> Reports
+      </div>
+      <div class="nav-item" data-section="about">
+        <span class="nav-icon">ℹ️</span> About
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="live-badge">
+        <span class="blink"></span> LIVE MONITORING
+      </div>
+      <div style="font-size:11px">Educational Project · v1.0</div>
+    </div>
+  </aside>
+
+  <div id="sidebar-overlay"></div>
+
+  <!-- ===== MAIN ===== -->
+  <div id="main">
+    <!-- Top Bar -->
+    <header id="topbar">
+      <div class="top-left">
+        <button id="hamburger">☰</button>
+        <div>
+          <h1>Firewall Log Threat Analyzer</h1>
+          <p>Real-Time Firewall Log Monitoring &amp; Threat Detection</p>
+        </div>
+      </div>
+      <div class="top-right">
+        <button class="btn btn-success" id="btn-start-live">▶ Start Live Monitoring</button>
+        <button class="btn btn-danger" id="btn-stop-live" style="display:none">■ Stop Monitoring</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div id="content">
+
+      <!-- ===== DASHBOARD SECTION ===== -->
+      <section id="sec-dashboard" class="section active">
+        <div class="page-header">
+          <h2>Security Operations Dashboard</h2>
+          <p>Summary of analyzed firewall logs and detected threats</p>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">Total Logs</div>
+          </div>
+          <div class="stat-card c-normal">
+            <div class="stat-icon">✅</div>
+            <div class="stat-value" id="stat-normal">0</div>
+            <div class="stat-label">Normal Traffic</div>
+          </div>
+          <div class="stat-card c-sus">
+            <div class="stat-icon">🔍</div>
+            <div class="stat-value" id="stat-suspicious">0</div>
+            <div class="stat-label">Suspicious Traffic</div>
+          </div>
+          <div class="stat-card c-crit">
+            <div class="stat-icon">🚨</div>
+            <div class="stat-value" id="stat-critical">0</div>
+            <div class="stat-label">Critical Threats</div>
+          </div>
+          <div class="stat-card c-blue">
+            <div class="stat-icon">🌐</div>
+            <div class="stat-value" id="stat-ips">0</div>
+            <div class="stat-label">Unique IPs</div>
+          </div>
+          <div class="stat-card c-purple">
+            <div class="stat-icon">🚫</div>
+            <div class="stat-value" id="stat-blocked">0</div>
+            <div class="stat-label">Blocked Connections</div>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>Threat Severity Distribution</h3>
+            <canvas id="chart-severity"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Allowed vs Blocked Traffic</h3>
+            <canvas id="chart-traffic"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Top Source IPs</h3>
+            <canvas id="chart-ips"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Threat Types Detected</h3>
+            <canvas id="chart-threats"></canvas>
+          </div>
+        </div>
+
+        <!-- Quick Threats preview -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Recent Threats</h3>
+            <button class="btn" onclick="navigate('threats')">View All →</button>
+          </div>
+          <div id="dash-threat-preview"></div>
+        </div>
+      </section>
+
+      <!-- ===== UPLOAD SECTION ===== -->
+      <section id="sec-upload" class="section">
+        <div class="page-header">
+          <h2>Upload Firewall Logs</h2>
+          <p>Upload a CSV or TXT file. All processing happens locally in your browser.</p>
+        </div>
+
+        <div class="card">
+          <div class="upload-zone" id="upload-zone">
+            <div class="uz-icon">📂</div>
+            <h3>Drag &amp; Drop your log file here</h3>
+            <p>Supports .csv and .txt files · All data stays in your browser</p>
+            <br>
+            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Choose File</button>
+            <input type="file" id="file-input" accept=".csv,.txt" />
+          </div>
+
+          <div class="file-info" id="file-info">
+            <table>
+              <tr><td>File Name</td><td id="fi-name">—</td></tr>
+              <tr><td>File Size</td><td id="fi-size">—</td></tr>
+              <tr><td>Records Found</td><td id="fi-records">—</td></tr>
+              <tr><td>Status</td><td id="fi-status">—</td></tr>
+            </table>
+          </div>
+
+          <div class="upload-actions">
+            <button class="btn btn-primary" id="btn-analyze" onclick="analyzeLogs()" disabled>🔍 Analyze Logs</button>
+            <button class="btn btn-success" onclick="loadSampleData()">🧪 Load Sample Data</button>
+            <button class="btn btn-danger" onclick="clearData()">🗑 Clear Data</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Supported Log Format</h3></div>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">CSV format with header row:</p>
+          <pre style="background:var(--bg-secondary);padding:14px;border-radius:6px;font-size:12px;overflow-x:auto;color:var(--accent2)">timestamp,source_ip,destination_ip,source_port,destination_port,protocol,action,bytes,status
+
+2026-10-07 10:01:22,192.168.1.10,10.0.0.5,52341,80,TCP,ALLOW,1250,OK
+2026-10-07 10:02:15,45.33.21.10,10.0.0.5,22,22,TCP,DENY,0,BLOCKED</pre>
+        </div>
+      </section>
+
+      <!-- ===== LOG ANALYSIS SECTION ===== -->
+      <section id="sec-logs" class="section">
+        <div class="page-header">
+          <h2>Log Analysis</h2>
+          <p>Detailed view of all parsed firewall log entries</p>
+        </div>
+
+        <div class="card">
+          <div class="filters-bar">
+            <input type="text" id="log-search" placeholder="Search IP, port, protocol…" oninput="renderLogs()" />
+            <select id="log-filter-severity" onchange="renderLogs()">
+              <option value="">All Severities</option>
+              <option value="NORMAL">Normal</option>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+            <select id="log-filter-action" onchange="renderLogs()">
+              <option value="">All Actions</option>
+              <option value="ALLOW">Allow</option>
+              <option value="DENY">Deny</option>
+            </select>
+            <select id="log-filter-protocol" onchange="renderLogs()">
+              <option value="">All Protocols</option>
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="ICMP">ICMP</option>
+            </select>
+            <select id="log-filter-threat" onchange="renderLogs()">
+              <option value="">All Threats</option>
+              <option value="Normal">Normal</option>
+              <option value="Possible Port Scan">Port Scan</option>
+              <option value="Possible Brute Force">Brute Force</option>
+              <option value="Possible DoS Pattern">DoS Pattern</option>
+              <option value="Repeated Blocked Activity">Repeated Blocked</option>
+              <option value="Suspicious Port">Suspicious Port</option>
+              <option value="Unusual Data Transfer">Data Transfer</option>
+            </select>
+            <button class="btn" onclick="resetLogFilters()">↺ Reset</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" id="log-table">
+              <thead>
+                <tr>
+                  <th onclick="sortLogs('timestamp')">Timestamp ↕</th>
+                  <th onclick="sortLogs('source_ip')">Source IP ↕</th>
+                  <th onclick="sortLogs('destination_ip')">Dest IP ↕</th>
+                  <th onclick="sortLogs('source_port')">Src Port ↕</th>
+                  <th onclick="sortLogs('destination_port')">Dst Port ↕</th>
+                  <th>Protocol</th>
+                  <th onclick="sortLogs('action')">Action ↕</th>
+                  <th onclick="sortLogs('bytes')">Bytes ↕</th>
+                  <th>Threat</th>
+                  <th>Severity</th>
+                  <th onclick="sortLogs('riskScore')">Risk ↕</th>
+                </tr>
+              </thead>
+              <tbody id="log-tbody"></tbody>
+            </table>
+          </div>
+          <div id="log-empty" class="empty-state" style="display:none">
+            <div class="es-icon">📋</div>
+            <h3>No Logs Available</h3>
+            <p>Upload a log file or load sample data to begin analysis.</p>
+          </div>
+          <div class="pagination" id="log-pagination"></div>
+        </div>
+      </section>
+
+      <!-- ===== THREATS SECTION ===== -->
+      <section id="sec-threats" class="section">
+        <div class="page-header">
+          <h2>Detected Threats</h2>
+          <p>Suspicious and malicious activity flagged by rule-based detection</p>
+        </div>
+
+        <div class="card">
+          <div class="filters-bar">
+            <input type="text" id="threat-search" placeholder="Search IP or threat type…" oninput="renderThreats()" />
+            <select id="threat-filter-sev" onchange="renderThreats()">
+              <option value="">All Severities</option>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+            <select id="threat-filter-type" onchange="renderThreats()">
+              <option value="">All Threat Types</option>
+              <option value="Possible Port Scan">Port Scan</option>
+              <option value="Possible Brute Force">Brute Force</option>
+              <option value="Possible DoS Pattern">DoS Pattern</option>
+              <option value="Repeated Blocked Activity">Repeated Blocked</option>
+              <option value="Suspicious Port">Suspicious Port</option>
+              <option value="Unusual Data Transfer">Data Transfer</option>
+            </select>
+            <button class="btn" onclick="resetThreatFilters()">↺ Reset</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Source IP</th>
+                  <th>Dest IP</th>
+                  <th>Threat Type</th>
+                  <th>Severity</th>
+                  <th>Risk Score</th>
+                  <th>Explanation</th>
+                  <th>Recommended Action</th>
+                </tr>
+              </thead>
+              <tbody id="threat-tbody"></tbody>
+            </table>
+          </div>
+          <div id="threat-empty" class="empty-state" style="display:none">
+            <div class="es-icon">✅</div>
+            <h3>No Threats Found</h3>
+            <p>No suspicious activity was detected in the current dataset.</p>
+          </div>
+          <div class="pagination" id="threat-pagination"></div>
+        </div>
+      </section>
+
+      <!-- ===== IP ANALYSIS SECTION ===== -->
+      <section id="sec-ipanalysis" class="section">
+        <div class="page-header">
+          <h2>IP Analysis</h2>
+          <p>Per-IP breakdown of activity, blocked requests, and risk scores</p>
+        </div>
+
+        <div class="card" style="padding-bottom:8px">
+          <div class="filters-bar">
+            <input type="text" id="ip-search" placeholder="Search IP address…" oninput="renderIPAnalysis()" />
+            <button class="btn" onclick="document.getElementById('ip-search').value='';renderIPAnalysis()">↺ Clear</button>
+          </div>
+        </div>
+
+        <div class="ip-grid" id="ip-grid"></div>
+        <div id="ip-empty" class="empty-state" style="display:none">
+          <div class="es-icon">🌐</div>
+          <h3>No IP Data</h3>
+          <p>Analyze logs to populate IP data.</p>
+        </div>
+      </section>
+
+      <!-- ===== REPORTS SECTION ===== -->
+      <section id="sec-reports" class="section">
+        <div class="page-header">
+          <h2>Analysis Report</h2>
+          <p>Summary report of the latest log analysis session</p>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Report Summary</h3>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" onclick="downloadCSVReport()">⬇ Download CSV</button>
+              <button class="btn" onclick="window.print()">🖨 Print Report</button>
+            </div>
+          </div>
+
+          <div class="report-grid" id="report-grid"></div>
+
+          <div class="card-header" style="margin-top:10px">
+            <h3>Security Recommendations</h3>
+          </div>
+          <div id="report-recs"></div>
+        </div>
+      </section>
+
+      <!-- ===== ABOUT SECTION ===== -->
+      <section id="sec-about" class="section">
+        <div class="about-wrap">
+          <div class="page-header">
+            <h2>About This Project</h2>
+          </div>
+
+          <div class="card">
+            <h3>🛡️ Firewall Log Threat Analyzer</h3>
+            <p>This application was developed as an educational cybersecurity project. It allows users to upload firewall log files and analyze network activity using rule-based detection algorithms to identify potentially suspicious behavior such as port scanning, brute-force attempts, DoS patterns, and unusual data transfers.</p>
+
+            <h3>🎯 Objective</h3>
+            <p>The objective is to demonstrate how defensive cybersecurity analysis works by parsing structured firewall logs, applying detection rules, calculating risk scores, and presenting results on a professional SOC-style dashboard — all inside a single static HTML file with no backend required.</p>
+
+            <h3>⚙️ Technologies Used</h3>
+            <div class="tech-list">
+              <span class="tech-pill">HTML5</span>
+              <span class="tech-pill">CSS3</span>
+              <span class="tech-pill">Vanilla JavaScript</span>
+              <span class="tech-pill">Chart.js 4.4</span>
+              <span class="tech-pill">FileReader API</span>
+              <span class="tech-pill">CSV Parsing</span>
+            </div>
+
+            <h3>🔍 Detection Rules</h3>
+            <p>The engine applies six rule-based detection algorithms:<br>
+            <strong>Port Scan</strong> · <strong>Brute Force</strong> · <strong>DoS Pattern</strong> · <strong>Repeated Blocked Activity</strong> · <strong>Suspicious Port Usage</strong> · <strong>Unusual Data Transfer</strong></p>
+
+            <h3>📋 Supported Log Format</h3>
+            <p>CSV files with columns: timestamp, source_ip, destination_ip, source_port, destination_port, protocol, action, bytes, status</p>
+
+            <div class="warn-box">
+              ⚠️ <strong>Important Limitation:</strong> This project is an educational rule-based log analyzer designed for learning purposes. It does <em>not</em> replace professional SIEM (Security Information and Event Management), IDS (Intrusion Detection System), IPS (Intrusion Prevention System), EDR (Endpoint Detection and Response), or commercial threat-intelligence platforms. All detections are heuristic and may produce false positives or false negatives.
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- end #content -->
+  </div><!-- end #main -->
+</div><!-- end #app -->
+
+<!-- ===== MODAL ===== -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Log Details</h2>
+      <button id="modal-close">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   FIREWALL LOG THREAT ANALYZER
+   All data is processed locally. No server communication.
+   ============================================================ */
+
+// ======================== STATE ========================
+let allLogs       = [];   // parsed & analyzed log entries
+let sortKey       = 'timestamp';
+let sortAsc       = true;
+let logPage       = 1;
+let threatPage    = 1;
+const PAGE_SIZE   = 20;
+let liveInterval  = null;
+let chartSeverity, chartTraffic, chartIPs, chartThreats;
+
+// Suspicious destination ports
+const SUSPICIOUS_PORTS = [21, 22, 23, 25, 135, 139, 445, 3389, 4444, 1433, 3306, 5900];
+
+// ======================== NAVIGATION ========================
+function navigate(section) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+  const navEl = document.querySelector(`.nav-item[data-section="${section}"]`);
+  if (navEl) navEl.classList.add('active');
+  const sec = document.getElementById(`sec-${section}`);
+  if (sec) sec.classList.add('active');
+  // Lazy render
+  if (section === 'logs')       renderLogs();
+  if (section === 'threats')    renderThreats();
+  if (section === 'ipanalysis') renderIPAnalysis();
+  if (section === 'reports')    renderReport();
+  if (section === 'dashboard')  updateCharts();
+  closeSidebar();
+}
+
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => navigate(el.dataset.section));
+});
+
+// ======================== SIDEBAR TOGGLE ========================
+const sidebar        = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+const hamburger      = document.getElementById('hamburger');
+
+hamburger.addEventListener('click', () => {
+  sidebar.classList.toggle('open');
+  sidebarOverlay.classList.toggle('show');
+});
+sidebarOverlay.addEventListener('click', closeSidebar);
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  sidebarOverlay.classList.remove('show');
+}
+
+// ======================== FILE UPLOAD ========================
+const fileInput  = document.getElementById('file-input');
+const uploadZone = document.getElementById('upload-zone');
+
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('dragover');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+/**
+ * handleFile — reads an uploaded file using FileReader API
+ */
+function handleFile(file) {
+  if (!file) return;
+  if (!file.name.match(/\.(csv|txt)$/i)) {
+    alert('Please upload a .csv or .txt file.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    const parsed = parseCSV(text);
+    showFileInfo(file.name, file.size, parsed.length, parsed.length > 0 ? '✅ Ready to Analyze' : '⚠️ No valid records found');
+    if (parsed.length > 0) {
+      allLogs = parsed;
+      document.getElementById('btn-analyze').disabled = false;
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showFileInfo(name, size, records, status) {
+  document.getElementById('fi-name').textContent    = name;
+  document.getElementById('fi-size').textContent    = formatBytes(size);
+  document.getElementById('fi-records').textContent = records;
+  document.getElementById('fi-status').textContent  = status;
+  document.getElementById('file-info').classList.add('show');
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// ======================== CSV PARSER ========================
+/**
+ * parseCSV — parses raw CSV text into structured log objects
+ */
+function parseCSV(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return [];
+  // Skip header line
+  const start = lines[0].toLowerCase().includes('timestamp') ? 1 : 0;
+  const results = [];
+  for (let i = start; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols.length < 8) continue;
+    results.push({
+      id:               i,
+      timestamp:        cols[0] || '',
+      source_ip:        cols[1] || '',
+      destination_ip:   cols[2] || '',
+      source_port:      parseInt(cols[3]) || 0,
+      destination_port: parseInt(cols[4]) || 0,
+      protocol:         (cols[5] || 'TCP').toUpperCase(),
+      action:           (cols[6] || 'ALLOW').toUpperCase(),
+      bytes:            parseInt(cols[7]) || 0,
+      status:           cols[8] || 'OK',
+      // Will be populated by analysis
+      threatType:  'Normal',
+      severity:    'NORMAL',
+      riskScore:   0,
+      explanation: '',
+      recommendation: ''
+    });
+  }
+  return results;
+}
+
+// ======================== SAMPLE DATA ========================
+/**
+ * loadSampleData — generates 65 realistic fictional firewall records
+ */
+function loadSampleData() {
+  const base = '2026-10-07 ';
+  const dst  = '10.0.0.5';
+  const now  = () => {
+    const h = String(Math.floor(Math.random()*24)).padStart(2,'0');
+    const m = String(Math.floor(Math.random()*60)).padStart(2,'0');
+    const s = String(Math.floor(Math.random()*60)).padStart(2,'0');
+    return base + h + ':' + m + ':' + s;
+  };
+  const rp = () => Math.floor(Math.random()*60000)+1024;
+
+  const rows = [
+    // === Normal traffic ===
+    [now(),'192.168.1.10', dst, rp(), 443, 'TCP', 'ALLOW', 1250, 'OK'],
+    [now(),'192.168.1.11', dst, rp(), 80,  'TCP', 'ALLOW', 800,  'OK'],
+    [now(),'192.168.1.12', dst, rp(), 443, 'TCP', 'ALLOW', 2100, 'OK'],
+    [now(),'192.168.1.13', dst, rp(), 8080,'TCP', 'ALLOW', 980,  'OK'],
+    [now(),'192.168.1.14', dst, rp(), 443, 'TCP', 'ALLOW', 1600, 'OK'],
+    [now(),'192.168.1.10', dst, rp(), 80,  'TCP', 'ALLOW', 500,  'OK'],
+    [now(),'192.168.1.20', dst, rp(), 443, 'TCP', 'ALLOW', 3400, 'OK'],
+    [now(),'192.168.1.21', dst, rp(), 53,  'UDP', 'ALLOW', 120,  'OK'],
+    [now(),'192.168.1.22', dst, rp(), 53,  'UDP', 'ALLOW', 105,  'OK'],
+    [now(),'192.168.1.23', dst, rp(), 123, 'UDP', 'ALLOW', 76,   'OK'],
+    [now(),'192.168.1.24', dst, rp(), 443, 'TCP', 'ALLOW', 1900, 'OK'],
+    [now(),'192.168.1.25', dst, rp(), 80,  'TCP', 'ALLOW', 760,  'OK'],
+    [now(),'192.168.1.26', dst, rp(), 443, 'TCP', 'ALLOW', 2250, 'OK'],
+    [now(),'192.168.1.27', dst, rp(), 8443,'TCP', 'ALLOW', 1340, 'OK'],
+    [now(),'10.10.0.2',    dst, rp(), 443, 'TCP', 'ALLOW', 4100, 'OK'],
+    [now(),'10.10.0.3',    dst, rp(), 80,  'TCP', 'ALLOW', 670,  'OK'],
+
+    // === PORT SCAN pattern — 45.33.21.10 ===
+    [now(),'45.33.21.10', dst, rp(), 21,   'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 22,   'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 23,   'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 25,   'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 80,   'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 135,  'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 139,  'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 443,  'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 445,  'TCP', 'DENY', 0,   'BLOCKED'],
+    [now(),'45.33.21.10', dst, rp(), 3389, 'TCP', 'DENY', 0,   'BLOCKED'],
+
+    // === BRUTE FORCE pattern — 103.45.67.12 hitting SSH ===
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'103.45.67.12','10.0.0.8', rp(), 22, 'TCP', 'DENY', 0, 'BLOCKED'],
+
+    // === DoS-like pattern — 198.51.100.7 floods the server ===
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'ALLOW', 200, 'OK'],
+    [now(),'198.51.100.7', dst, rp(), 80, 'TCP', 'DENY',  0,   'BLOCKED'],
+
+    // === Repeated blocked from 203.0.113.50 ===
+    [now(),'203.0.113.50', dst, rp(), 445,  'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'203.0.113.50', dst, rp(), 3389, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'203.0.113.50', dst, rp(), 8080, 'TCP', 'DENY', 0, 'BLOCKED'],
+    [now(),'203.0.113.50', dst, rp(), 443,  'TCP', 'DENY', 0, 'BLOCKED'],
+
+    // === Unusual data transfer ===
+    [now(),'172.16.5.3', dst, rp(), 443, 'TCP', 'ALLOW', 987654, 'OK'],
+    [now(),'172.16.5.4', dst, rp(), 8080,'TCP', 'ALLOW', 775000, 'OK'],
+
+    // === Suspicious ports — flagged for review ===
+    [now(),'192.168.1.50', dst, rp(), 3389, 'TCP', 'ALLOW', 4400, 'OK'],
+    [now(),'192.168.1.51', dst, rp(), 22,   'TCP', 'ALLOW', 3100, 'OK'],
+
+    // === Mixed normal traffic ===
+    [now(),'192.168.2.1',  dst, rp(), 443,  'TCP',  'ALLOW', 1800, 'OK'],
+    [now(),'192.168.2.2',  dst, rp(), 80,   'TCP',  'ALLOW', 900,  'OK'],
+    [now(),'192.168.2.3',  dst, rp(), 8443, 'TCP',  'ALLOW', 2100, 'OK'],
+    [now(),'10.20.30.40',  dst, rp(), 443,  'TCP',  'ALLOW', 1400, 'OK'],
+    [now(),'10.20.30.41',  dst, rp(), 53,   'UDP',  'ALLOW', 88,   'OK'],
+    [now(),'192.168.99.1', dst, rp(), 443,  'TCP',  'ALLOW', 3200, 'OK'],
+    [now(),'192.168.99.2', dst, rp(), 80,   'TCP',  'DENY',  0,    'BLOCKED'],
+    [now(),'77.88.55.66',  dst, rp(), 1433, 'TCP',  'DENY',  0,    'BLOCKED'],
+    [now(),'66.77.88.99',  dst, rp(), 5900, 'TCP',  'DENY',  0,    'BLOCKED'],
+  ];
+
+  allLogs = rows.map((r, i) => ({
+    id:               i,
+    timestamp:        r[0],
+    source_ip:        r[1],
+    destination_ip:   r[2],
+    source_port:      r[3],
+    destination_port: r[4],
+    protocol:         r[5],
+    action:           r[6],
+    bytes:            r[7],
+    status:           r[8],
+    threatType:  'Normal',
+    severity:    'NORMAL',
+    riskScore:   0,
+    explanation: '',
+    recommendation: ''
+  }));
+
+  showFileInfo('sample_firewall_logs.csv', allLogs.length * 60, allLogs.length, '✅ Sample Data Loaded');
+  document.getElementById('btn-analyze').disabled = false;
+  analyzeLogs();
+}
+
+// ======================== ANALYSIS ENGINE ========================
+/**
+ * analyzeLogs — orchestrates full threat analysis on allLogs
+ */
+function analyzeLogs() {
+  if (!allLogs.length) return;
+
+  // Build per-IP aggregates for rule evaluation
+  const ipMap = {};
+  allLogs.forEach(log => {
+    const ip = log.source_ip;
+    if (!ipMap[ip]) ipMap[ip] = { ports: new Set(), denies: 0, total: 0, bytes: 0, logs: [] };
+    ipMap[ip].total++;
+    ipMap[ip].ports.add(log.destination_port);
+    if (log.action === 'DENY') ipMap[ip].denies++;
+    ipMap[ip].bytes += log.bytes;
+    ipMap[ip].logs.push(log);
+  });
+
+  // Compute average bytes for data transfer rule
+  const totalBytes = allLogs.reduce((s, l) => s + l.bytes, 0);
+  const avgBytes   = allLogs.length ? totalBytes / allLogs.length : 0;
+
+  // Compute average requests per IP for DoS rule
+  const ipCounts = Object.values(ipMap).map(v => v.total);
+  const avgReqs  = ipCounts.reduce((a,b)=>a+b,0) / (ipCounts.length||1);
+
+  // Analyze each log entry
+  allLogs.forEach(log => {
+    const result = detectThreat(log, ipMap[log.source_ip], avgBytes, avgReqs);
+    log.threatType      = result.threatType;
+    log.severity        = result.severity;
+    log.riskScore       = result.riskScore;
+    log.explanation     = result.explanation;
+    log.recommendation  = result.recommendation;
+  });
+
+  updateDashboard();
+  updateCharts();
+  renderLogs();
+  renderThreats();
+  renderIPAnalysis();
+}
+
+/**
+ * detectThreat — applies all detection rules to a single log entry
+ * Returns { threatType, severity, riskScore, explanation, recommendation }
+ */
+function detectThreat(log, ipData, avgBytes, avgReqs) {
+  let score = 0;
+  let threatType   = 'Normal';
+  let severity     = 'NORMAL';
+  let explanation  = 'No suspicious patterns detected.';
+  let recommendation = 'No action required.';
+
+  const portCount  = ipData.ports.size;
+  const denyCount  = ipData.denies;
+  const totalReqs  = ipData.total;
+  const dstPort    = log.destination_port;
+  const isSuspPort = SUSPICIOUS_PORTS.includes(dstPort);
+
+  // Rule 3 — DoS Pattern (highest priority: can override others)
+  if (totalReqs > avgReqs * 4 && avgReqs > 2) {
+    threatType    = 'Possible DoS Pattern';
+    severity      = 'CRITICAL';
+    score        += 50;
+    explanation   = `The source IP generated ${totalReqs} requests — significantly above the average of ${Math.round(avgReqs)} requests/IP. This may indicate a Denial of Service attempt.`;
+    recommendation = 'Apply rate limiting, monitor traffic volume, review firewall/WAF rules, and consider DDoS protection services.';
+  }
+  // Rule 1 — Port Scan
+  else if (portCount >= 6 && denyCount >= 4) {
+    threatType    = 'Possible Port Scan';
+    severity      = 'HIGH';
+    score        += 35;
+    explanation   = `The source IP accessed ${portCount} different destination ports with ${denyCount} blocked attempts. This pattern may indicate network reconnaissance or unauthorized scanning.`;
+    recommendation = 'Review the source IP, check firewall rules, close unnecessary exposed ports, and monitor additional network activity.';
+  }
+  // Rule 2 — Brute Force (same port, many denies)
+  else if (denyCount >= 5 && portCount <= 2) {
+    threatType    = 'Possible Brute Force';
+    severity      = 'HIGH';
+    score        += 40;
+    explanation   = `${denyCount} blocked/failed connection attempts were detected from this source IP targeting the same port. This pattern is consistent with a brute-force attack.`;
+    recommendation = 'Enable MFA, apply rate limiting on the targeted service, review authentication logs, and investigate repeated failed attempts.';
+  }
+  // Rule 4 — Repeated Blocked Activity
+  else if (denyCount >= 3) {
+    threatType    = 'Repeated Blocked Activity';
+    severity      = 'MEDIUM';
+    score        += 20;
+    explanation   = `${denyCount} blocked connection attempts were detected from this source IP. While not conclusive, this pattern warrants further investigation.`;
+    recommendation = 'Review related logs, investigate the source IP, and update firewall rules if malicious activity is confirmed.';
+  }
+  // Rule 5 — Suspicious Port
+  else if (isSuspPort) {
+    threatType    = 'Suspicious Port';
+    severity      = 'LOW';
+    score        += 10;
+    explanation   = `Port ${dstPort} is commonly targeted in attacks (e.g., SSH, RDP, SMB, FTP). This connection should be reviewed to ensure it is authorized.`;
+    recommendation = 'Verify if this connection is authorized. If not, update firewall rules to restrict access to this port.';
+  }
+
+  // Rule 6 — Unusual Data Transfer (can stack on top)
+  if (log.bytes > avgBytes * 5 && avgBytes > 100) {
+    if (threatType === 'Normal') {
+      threatType    = 'Unusual Data Transfer';
+      severity      = 'MEDIUM';
+      explanation   = `This connection transferred ${log.bytes.toLocaleString()} bytes — significantly above the session average of ${Math.round(avgBytes).toLocaleString()} bytes. This may indicate data exfiltration.`;
+      recommendation = 'Investigate the destination of this data transfer, review DLP policies, and verify the user/service involved.';
+    }
+    score += 20;
+  }
+
+  // Bonus for DENY action on an already suspicious entry
+  if (log.action === 'DENY' && threatType !== 'Normal') score += 5;
+
+  // Normalize severity based on final score
+  if (score === 0)       { severity = 'NORMAL'; }
+  else if (score <= 15)  { severity = 'LOW'; }
+  else if (score <= 30)  { severity = 'MEDIUM'; }
+  else if (score <= 55)  { severity = 'HIGH'; }
+  else                   { severity = 'CRITICAL'; }
+
+  // Re-align severity for specific overrides
+  if (threatType === 'Possible DoS Pattern') severity = 'CRITICAL';
+  if (threatType === 'Possible Port Scan')   severity = severity === 'NORMAL' ? 'HIGH' : severity;
+  if (threatType === 'Possible Brute Force') severity = severity === 'NORMAL' ? 'HIGH' : severity;
+
+  return {
+    threatType,
+    severity,
+    riskScore:     Math.min(score, 100),
+    explanation,
+    recommendation
+  };
+}
+
+/**
+ * calculateRiskScore — standalone helper (used externally/reports)
+ */
+function calculateRiskScore(log) {
+  return log.riskScore;
+}
+
+// ======================== DASHBOARD UPDATE ========================
+/**
+ * updateDashboard — recalculates all stat card values from allLogs
+ */
+function updateDashboard() {
+  const total     = allLogs.length;
+  const normal    = allLogs.filter(l => l.threatType === 'Normal').length;
+  const suspicious= allLogs.filter(l => l.threatType !== 'Normal').length;
+  const critical  = allLogs.filter(l => l.severity === 'CRITICAL').length;
+  const uniqueIPs = new Set(allLogs.map(l => l.source_ip)).size;
+  const blocked   = allLogs.filter(l => l.action === 'DENY').length;
+
+  document.getElementById('stat-total').textContent     = total;
+  document.getElementById('stat-normal').textContent    = normal;
+  document.getElementById('stat-suspicious').textContent= suspicious;
+  document.getElementById('stat-critical').textContent  = critical;
+  document.getElementById('stat-ips').textContent       = uniqueIPs;
+  document.getElementById('stat-blocked').textContent   = blocked;
+
+  // Threat preview in dashboard
+  const recent = allLogs.filter(l => l.threatType !== 'Normal').slice(0, 5);
+  const preview = document.getElementById('dash-threat-preview');
+  if (!recent.length) {
+    preview.innerHTML = '<div class="empty-state" style="padding:30px"><div class="es-icon">✅</div><p>No threats detected.</p></div>';
+    return;
+  }
+  preview.innerHTML = `
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Source IP</th><th>Threat</th><th>Severity</th><th>Risk</th></tr></thead>
+      <tbody>${recent.map(l => `
+        <tr>
+          <td>${l.source_ip}</td>
+          <td>${l.threatType}</td>
+          <td>${severityBadge(l.severity)}</td>
+          <td>${riskBar(l.riskScore)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// ======================== CHARTS ========================
+/**
+ * updateCharts — rebuilds all four Chart.js charts from allLogs
+ */
+function updateCharts() {
+  const sevCounts = { NORMAL:0, LOW:0, MEDIUM:0, HIGH:0, CRITICAL:0 };
+  const actionCounts = { ALLOW:0, DENY:0 };
+  const ipCounts = {};
+  const threatCounts = {};
+
+  allLogs.forEach(l => {
+    if (sevCounts[l.severity] !== undefined) sevCounts[l.severity]++;
+    if (actionCounts[l.action] !== undefined) actionCounts[l.action]++;
+    ipCounts[l.source_ip] = (ipCounts[l.source_ip]||0) + 1;
+    if (l.threatType !== 'Normal') threatCounts[l.threatType] = (threatCounts[l.threatType]||0) + 1;
+  });
+
+  // Chart 1 — Severity Doughnut
+  const sevLabels = ['Normal','Low','Medium','High','Critical'];
+  const sevData   = [sevCounts.NORMAL, sevCounts.LOW, sevCounts.MEDIUM, sevCounts.HIGH, sevCounts.CRITICAL];
+  const sevColors = ['#3fb950','#58a6ff','#d29922','#f08000','#f85149'];
+
+  if (chartSeverity) chartSeverity.destroy();
+  chartSeverity = new Chart(document.getElementById('chart-severity'), {
+    type: 'doughnut',
+    data: { labels: sevLabels, datasets:[{ data: sevData, backgroundColor: sevColors, borderWidth: 2, borderColor: '#1c2333' }] },
+    options: { plugins: { legend: { labels: { color:'#e6edf3', font:{size:12} } } }, cutout:'55%' }
+  });
+
+  // Chart 2 — Traffic Bar
+  if (chartTraffic) chartTraffic.destroy();
+  chartTraffic = new Chart(document.getElementById('chart-traffic'), {
+    type: 'bar',
+    data: {
+      labels: ['Allowed','Blocked'],
+      datasets:[{ data:[actionCounts.ALLOW, actionCounts.DENY], backgroundColor:['#3fb950','#f85149'], borderRadius:6 }]
+    },
+    options: {
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{color:'#8b949e'}}, y:{ticks:{color:'#8b949e'}, grid:{color:'#21262d'}} }
+    }
+  });
+
+  // Chart 3 — Top IPs
+  const topIPs = Object.entries(ipCounts).sort((a,b)=>b[1]-a[1]).slice(0,7);
+  if (chartIPs) chartIPs.destroy();
+  chartIPs = new Chart(document.getElementById('chart-ips'), {
+    type: 'bar',
+    data: {
+      labels: topIPs.map(e=>e[0]),
+      datasets:[{ data:topIPs.map(e=>e[1]), backgroundColor:'#58a6ff', borderRadius:4 }]
+    },
+    options: {
+      indexAxis:'y',
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{color:'#8b949e'}, grid:{color:'#21262d'}}, y:{ticks:{color:'#8b949e', font:{size:11}}} }
+    }
+  });
+
+  // Chart 4 — Threat Types
+  const entries = Object.entries(threatCounts);
+  if (chartThreats) chartThreats.destroy();
+  chartThreats = new Chart(document.getElementById('chart-threats'), {
+    type: 'bar',
+    data: {
+      labels: entries.length ? entries.map(e=>e[0]) : ['No threats'],
+      datasets:[{ data: entries.length ? entries.map(e=>e[1]) : [0], backgroundColor:'#bc8cff', borderRadius:4 }]
+    },
+    options: {
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{color:'#8b949e', font:{size:10}}}, y:{ticks:{color:'#8b949e'}, grid:{color:'#21262d'}} }
+    }
+  });
+}
+
+// ======================== LOG TABLE ========================
+let logSortKey = 'timestamp';
+let logSortAsc  = true;
+
+/**
+ * sortLogs — sorts the log table by the given key
+ */
+function sortLogs(key) {
+  if (logSortKey === key) logSortAsc = !logSortAsc;
+  else { logSortKey = key; logSortAsc = true; }
+  renderLogs();
+}
+
+/**
+ * renderLogs — renders filtered, sorted, paginated log table
+ */
+function renderLogs() {
+  const search   = (document.getElementById('log-search').value||'').toLowerCase();
+  const sevFilt  = document.getElementById('log-filter-severity').value;
+  const actFilt  = document.getElementById('log-filter-action').value;
+  const protoFilt= document.getElementById('log-filter-protocol').value;
+  const threatFilt=document.getElementById('log-filter-threat').value;
+
+  let data = allLogs.filter(l => {
+    if (sevFilt   && l.severity    !== sevFilt)   return false;
+    if (actFilt   && l.action      !== actFilt)   return false;
+    if (protoFilt && l.protocol    !== protoFilt) return false;
+    if (threatFilt&& l.threatType  !== threatFilt)return false;
+    if (search && !(
+      l.source_ip.includes(search) ||
+      l.destination_ip.includes(search) ||
+      String(l.source_port).includes(search) ||
+      String(l.destination_port).includes(search) ||
+      l.protocol.toLowerCase().includes(search) ||
+      l.threatType.toLowerCase().includes(search)
+    )) return false;
+    return true;
+  });
+
+  // Sort
+  data = data.slice().sort((a,b) => {
+    let va = a[logSortKey], vb = b[logSortKey];
+    if (typeof va === 'string') va = va.toLowerCase(), vb = vb.toLowerCase();
+    return logSortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
+
+  const total = data.length;
+  const pages = Math.ceil(total / PAGE_SIZE) || 1;
+  if (logPage > pages) logPage = 1;
+  const slice = data.slice((logPage-1)*PAGE_SIZE, logPage*PAGE_SIZE);
+
+  const tbody = document.getElementById('log-tbody');
+  const empty = document.getElementById('log-empty');
+
+  if (!total) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('log-pagination').innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = slice.map(l => `
+    <tr class="clickable" onclick="showLogModal(${l.id})">
+      <td>${l.timestamp}</td>
+      <td><code style="color:var(--accent)">${l.source_ip}</code></td>
+      <td><code style="color:var(--text-muted)">${l.destination_ip}</code></td>
+      <td>${l.source_port}</td>
+      <td>${l.destination_port}</td>
+      <td><span class="badge badge-normal">${l.protocol}</span></td>
+      <td>${actionBadge(l.action)}</td>
+      <td>${l.bytes.toLocaleString()}</td>
+      <td style="max-width:160px;white-space:normal">${l.threatType === 'Normal' ? '<span style="color:var(--text-muted)">—</span>' : `<span style="color:var(--warning)">${l.threatType}</span>`}</td>
+      <td>${severityBadge(l.severity)}</td>
+      <td>${riskBar(l.riskScore)}</td>
+    </tr>`).join('');
+
+  renderPagination('log-pagination', logPage, pages, p => { logPage = p; renderLogs(); });
+}
+
+function resetLogFilters() {
+  document.getElementById('log-search').value = '';
+  document.getElementById('log-filter-severity').value = '';
+  document.getElementById('log-filter-action').value   = '';
+  document.getElementById('log-filter-protocol').value = '';
+  document.getElementById('log-filter-threat').value   = '';
+  logPage = 1;
+  renderLogs();
+}
+
+// ======================== THREAT TABLE ========================
+/**
+ * renderThreats — renders filtered, paginated threat table
+ */
+function renderThreats() {
+  const search  = (document.getElementById('threat-search').value||'').toLowerCase();
+  const sevFilt = document.getElementById('threat-filter-sev').value;
+  const typFilt = document.getElementById('threat-filter-type').value;
+
+  let data = allLogs.filter(l => l.threatType !== 'Normal').filter(l => {
+    if (sevFilt && l.severity  !== sevFilt) return false;
+    if (typFilt && l.threatType!== typFilt) return false;
+    if (search && !(
+      l.source_ip.toLowerCase().includes(search) ||
+      l.threatType.toLowerCase().includes(search)
+    )) return false;
+    return true;
+  }).sort((a,b) => b.riskScore - a.riskScore);
+
+  const total = data.length;
+  const pages = Math.ceil(total / PAGE_SIZE) || 1;
+  if (threatPage > pages) threatPage = 1;
+  const slice = data.slice((threatPage-1)*PAGE_SIZE, threatPage*PAGE_SIZE);
+
+  const tbody = document.getElementById('threat-tbody');
+  const empty = document.getElementById('threat-empty');
+
+  if (!total) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('threat-pagination').innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = slice.map(l => `
+    <tr class="clickable" onclick="showLogModal(${l.id})">
+      <td>${l.timestamp}</td>
+      <td><code style="color:var(--danger)">${l.source_ip}</code></td>
+      <td><code style="color:var(--text-muted)">${l.destination_ip}</code></td>
+      <td style="max-width:160px;white-space:normal">${l.threatType}</td>
+      <td>${severityBadge(l.severity)}</td>
+      <td>${riskBar(l.riskScore)}</td>
+      <td style="max-width:200px;white-space:normal;color:var(--text-muted);font-size:12px">${l.explanation.substring(0,80)}${l.explanation.length>80?'…':''}</td>
+      <td style="max-width:180px;white-space:normal;color:var(--text-muted);font-size:12px">${l.recommendation.substring(0,80)}${l.recommendation.length>80?'…':''}</td>
+    </tr>`).join('');
+
+  renderPagination('threat-pagination', threatPage, pages, p => { threatPage = p; renderThreats(); });
+}
+
+function resetThreatFilters() {
+  document.getElementById('threat-search').value = '';
+  document.getElementById('threat-filter-sev').value  = '';
+  document.getElementById('threat-filter-type').value = '';
+  threatPage = 1;
+  renderThreats();
+}
+
+// ======================== IP ANALYSIS ========================
+/**
+ * renderIPAnalysis — renders per-IP summary cards sorted by risk score
+ */
+function renderIPAnalysis() {
+  const search = (document.getElementById('ip-search').value||'').toLowerCase();
+
+  const ipMap = {};
+  allLogs.forEach(l => {
+    const ip = l.source_ip;
+    if (!ipMap[ip]) {
+      ipMap[ip] = {
+        ip, total:0, allowed:0, blocked:0,
+        ports: new Set(), bytes:0,
+        threatCount:0, maxSev:'NORMAL', maxRisk:0
+      };
+    }
+    const d = ipMap[ip];
+    d.total++;
+    if (l.action === 'ALLOW') d.allowed++; else d.blocked++;
+    d.ports.add(l.destination_port);
+    d.bytes += l.bytes;
+    if (l.threatType !== 'Normal') {
+      d.threatCount++;
+      if (severityOrder(l.severity) > severityOrder(d.maxSev)) d.maxSev = l.severity;
+      if (l.riskScore > d.maxRisk) d.maxRisk = l.riskScore;
+    }
+  });
+
+  let ips = Object.values(ipMap)
+    .sort((a,b) => b.maxRisk - a.maxRisk)
+    .filter(d => !search || d.ip.includes(search));
+
+  const grid  = document.getElementById('ip-grid');
+  const empty = document.getElementById('ip-empty');
+
+  if (!ips.length) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  grid.innerHTML = ips.map(d => `
+    <div class="ip-card">
+      <div class="ip-header">
+        <div>
+          <div class="ip-addr">${d.ip}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${d.ports.size} port(s) accessed</div>
+        </div>
+        <div>${severityBadge(d.maxSev)}</div>
+      </div>
+      <div class="ip-stats">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Total Requests</span><strong>${d.total}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Allowed</span><strong style="color:var(--accent2)">${d.allowed}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Blocked</span><strong style="color:var(--danger)">${d.blocked}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Total Bytes</span><strong>${d.bytes.toLocaleString()}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span>Threats Detected</span><strong style="color:${d.threatCount?'var(--warning)':'var(--text-muted)'}">${d.threatCount}</strong>
+        </div>
+      </div>
+      <div class="ip-stat-row">
+        <span>Risk Score</span>
+        ${riskBar(d.maxRisk)}
+      </div>
+    </div>`).join('');
+}
+
+function severityOrder(s) {
+  return {NORMAL:0,LOW:1,MEDIUM:2,HIGH:3,CRITICAL:4}[s]||0;
+}
+
+// ======================== MODAL ========================
+/**
+ * showLogModal — opens the detail modal for a log entry by id
+ */
+function showLogModal(id) {
+  const log = allLogs.find(l => l.id === id);
+  if (!log) return;
+
+  const recItems = log.recommendation.split('. ').filter(Boolean)
+    .map(r => `<li>${r.trim()}</li>`).join('');
+
+  document.getElementById('modal-title').textContent = log.threatType === 'Normal' ? 'Log Entry Details' : `⚠️ Threat: ${log.threatType}`;
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-section">
+      <h4>Connection Details</h4>
+      <div class="modal-kv">
+        <span class="k">Timestamp</span><span class="v">${log.timestamp}</span>
+        <span class="k">Source IP</span><span class="v">${log.source_ip}</span>
+        <span class="k">Destination IP</span><span class="v">${log.destination_ip}</span>
+        <span class="k">Source Port</span><span class="v">${log.source_port}</span>
+        <span class="k">Destination Port</span><span class="v">${log.destination_port}</span>
+        <span class="k">Protocol</span><span class="v">${log.protocol}</span>
+        <span class="k">Action</span><span class="v">${actionBadge(log.action)}</span>
+        <span class="k">Bytes Transferred</span><span class="v">${log.bytes.toLocaleString()} bytes</span>
+        <span class="k">Status</span><span class="v">${log.status}</span>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h4>Threat Assessment</h4>
+      <div class="modal-kv">
+        <span class="k">Threat Type</span><span class="v">${log.threatType}</span>
+        <span class="k">Severity</span><span class="v">${severityBadge(log.severity)}</span>
+        <span class="k">Risk Score</span><span class="v">${riskBar(log.riskScore)}</span>
+      </div>
+    </div>
+
+    ${log.threatType !== 'Normal' ? `
+    <div class="modal-section">
+      <h4>Why Was This Flagged?</h4>
+      <div class="modal-box danger">${log.explanation}</div>
+    </div>
+    <div class="modal-section">
+      <h4>Recommended Defensive Actions</h4>
+      <ul class="rec-list">${recItems}</ul>
+    </div>` : `
+    <div class="modal-section">
+      <h4>Assessment Notes</h4>
+      <div class="modal-box">${log.explanation}</div>
+    </div>`}`;
+
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+});
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay'))
+    document.getElementById('modal-overlay').classList.remove('show');
+});
+
+// ======================== REPORT ========================
+/**
+ * renderReport — builds the report section from allLogs
+ */
+function renderReport() {
+  const total      = allLogs.length;
+  const normal     = allLogs.filter(l => l.threatType === 'Normal').length;
+  const suspicious = allLogs.filter(l => l.threatType !== 'Normal').length;
+  const critical   = allLogs.filter(l => l.severity === 'CRITICAL').length;
+  const now        = new Date().toLocaleString();
+
+  // Top suspicious IP
+  const ipScores = {};
+  allLogs.forEach(l => { if (l.riskScore > 0) ipScores[l.source_ip] = Math.max(ipScores[l.source_ip]||0, l.riskScore); });
+  const topIP   = Object.entries(ipScores).sort((a,b)=>b[1]-a[1])[0];
+  const topIPStr= topIP ? `${topIP[0]} (score: ${topIP[1]})` : 'N/A';
+
+  // Top threat type
+  const typCounts = {};
+  allLogs.filter(l=>l.threatType!=='Normal').forEach(l => { typCounts[l.threatType]=(typCounts[l.threatType]||0)+1; });
+  const topType = Object.entries(typCounts).sort((a,b)=>b[1]-a[1])[0];
+  const topTypeStr = topType ? `${topType[0]} (${topType[1]}×)` : 'None';
+
+  const rGrid = document.getElementById('report-grid');
+  rGrid.innerHTML = [
+    ['Analysis Date',     now,             '#e6edf3'],
+    ['Total Logs',        total,           '#e6edf3'],
+    ['Normal Logs',       normal,          '#3fb950'],
+    ['Suspicious Logs',   suspicious,      '#d29922'],
+    ['Critical Threats',  critical,        '#f85149'],
+    ['Top Suspicious IP', topIPStr,        '#f85149'],
+    ['Top Threat Type',   topTypeStr,      '#d29922'],
+    ['Unique Source IPs', new Set(allLogs.map(l=>l.source_ip)).size, '#58a6ff'],
+  ].map(([label, val, color]) => `
+    <div class="report-item">
+      <div class="ri-label">${label}</div>
+      <div class="ri-value" style="color:${color};font-size:${String(val).length>12?'13px':'20px'}">${val}</div>
+    </div>`).join('');
+
+  // Recommendations
+  const detected = new Set(allLogs.filter(l=>l.threatType!=='Normal').map(l=>l.threatType));
+  const recMap = {
+    'Possible Port Scan':        ['Review flagged source IPs in firewall logs', 'Close unnecessary exposed ports', 'Enable port-scan detection on your IDS/IPS', 'Monitor additional traffic from flagged IPs'],
+    'Possible Brute Force':      ['Enable multi-factor authentication (MFA)', 'Apply rate limiting on SSH/RDP/login endpoints', 'Review authentication logs for successful logins', 'Consider IP-based blocking after N failed attempts'],
+    'Possible DoS Pattern':      ['Apply traffic rate limiting at the firewall level', 'Monitor traffic volume dashboards continuously', 'Review WAF rules for anomaly detection', 'Consider upstream DDoS scrubbing services'],
+    'Repeated Blocked Activity': ['Review logs from flagged source IPs', 'Investigate the intent behind repeated blocked attempts', 'Update firewall rules to block confirmed malicious IPs'],
+    'Suspicious Port':           ['Verify that all open sensitive ports are intentional', 'Restrict access to critical ports (22, 3389, 445) by IP allowlist', 'Disable unused services on sensitive ports'],
+    'Unusual Data Transfer':     ['Review data transferred to/from flagged IPs', 'Implement DLP (Data Loss Prevention) policies', 'Investigate user accounts associated with high-volume transfers'],
+  };
+
+  const recsHTML = detected.size ? Array.from(detected).map(t => `
+    <div style="margin-bottom:16px">
+      <div style="font-weight:600;color:var(--warning);margin-bottom:8px">⚠️ ${t}</div>
+      <ul class="rec-list">${(recMap[t]||['Investigate further.']).map(r=>`<li>${r}</li>`).join('')}</ul>
+    </div>`).join('') :
+    '<div style="color:var(--text-muted);font-size:13px">No threats detected — no specific recommendations at this time. Continue routine log monitoring.</div>';
+
+  document.getElementById('report-recs').innerHTML = recsHTML;
+}
+
+/**
+ * generateReport — builds CSV report content
+ */
+function generateReport() {
+  const rows = [['Timestamp','Source IP','Destination IP','Src Port','Dst Port','Protocol','Action','Bytes','Threat Type','Severity','Risk Score','Explanation']];
+  allLogs.forEach(l => {
+    rows.push([l.timestamp, l.source_ip, l.destination_ip, l.source_port, l.destination_port, l.protocol, l.action, l.bytes, l.threatType, l.severity, l.riskScore, `"${l.explanation.replace(/"/g,'""')}"`]);
+  });
+  return rows.map(r => r.join(',')).join('\n');
+}
+
+/**
+ * downloadCSVReport — triggers browser download of the CSV report
+ */
+function downloadCSVReport() {
+  if (!allLogs.length) { alert('No data to export. Please analyze logs first.'); return; }
+  const csv  = generateReport();
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `firewall_threat_report_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ======================== LIVE MONITORING SIMULATION ========================
+const LIVE_IPS   = ['45.33.21.10','103.45.67.12','198.51.100.7','192.168.1.10','172.16.5.3','203.0.113.50','10.20.30.41','192.168.2.5'];
+const LIVE_PORTS = [80,443,22,3389,25,445,21,8080,8443,53];
+const LIVE_PROTO = ['TCP','TCP','TCP','UDP','ICMP'];
+const LIVE_ACT   = ['ALLOW','ALLOW','DENY'];
+let liveCounter  = 0;
+
+/**
+ * startLiveMonitoring — adds simulated log entries every 2 seconds
+ * SIMULATION ONLY — not real network monitoring
+ */
+function startLiveMonitoring() {
+  if (liveInterval) return;
+  document.getElementById('btn-start-live').style.display = 'none';
+  document.getElementById('btn-stop-live').style.display  = 'inline-block';
+  document.getElementById('live-badge').classList.add('visible');
+
+  liveInterval = setInterval(() => {
+    const newEntry = {
+      id:               allLogs.length + liveCounter++,
+      timestamp:        new Date().toISOString().replace('T',' ').substring(0,19),
+      source_ip:        LIVE_IPS[Math.floor(Math.random()*LIVE_IPS.length)],
+      destination_ip:   '10.0.0.' + Math.floor(Math.random()*10+1),
+      source_port:      Math.floor(Math.random()*60000)+1024,
+      destination_port: LIVE_PORTS[Math.floor(Math.random()*LIVE_PORTS.length)],
+      protocol:         LIVE_PROTO[Math.floor(Math.random()*LIVE_PROTO.length)],
+      action:           LIVE_ACT[Math.floor(Math.random()*LIVE_ACT.length)],
+      bytes:            Math.floor(Math.random()*10000),
+      status:           'LIVE',
+      threatType:  'Normal', severity:'NORMAL', riskScore:0,
+      explanation: '', recommendation: ''
+    };
+    allLogs.push(newEntry);
+    analyzeLogs();
+  }, 2000);
+}
+
+/**
+ * stopLiveMonitoring — stops the live simulation interval
+ */
+function stopLiveMonitoring() {
+  clearInterval(liveInterval);
+  liveInterval = null;
+  document.getElementById('btn-start-live').style.display = 'inline-block';
+  document.getElementById('btn-stop-live').style.display  = 'none';
+  document.getElementById('live-badge').classList.remove('visible');
+}
+
+document.getElementById('btn-start-live').addEventListener('click', () => {
+  if (!allLogs.length) loadSampleData();
+  startLiveMonitoring();
+});
+document.getElementById('btn-stop-live').addEventListener('click', stopLiveMonitoring);
+
+// ======================== CLEAR DATA ========================
+function clearData() {
+  stopLiveMonitoring();
+  allLogs = [];
+  document.getElementById('file-info').classList.remove('show');
+  document.getElementById('file-input').value = '';
+  document.getElementById('btn-analyze').disabled = true;
+  updateDashboard();
+  updateCharts();
+  renderLogs();
+  renderThreats();
+  renderIPAnalysis();
+}
+
+// ======================== HELPERS ========================
+/**
+ * severityBadge — returns HTML badge for severity level
+ */
+function severityBadge(sev) {
+  const cls = { NORMAL:'badge-normal', LOW:'badge-low', MEDIUM:'badge-medium', HIGH:'badge-high', CRITICAL:'badge-critical' };
+  return `<span class="badge ${cls[sev]||'badge-normal'}">${sev}</span>`;
+}
+
+/**
+ * actionBadge — returns HTML badge for ALLOW/DENY
+ */
+function actionBadge(action) {
+  return action === 'ALLOW'
+    ? `<span class="badge badge-allow">ALLOW</span>`
+    : `<span class="badge badge-deny">DENY</span>`;
+}
+
+/**
+ * riskBar — returns an inline risk score bar with value
+ */
+function riskBar(score) {
+  const s = Math.min(Math.max(score,0),100);
+  const color = s === 0 ? '#3fb950' : s <= 20 ? '#3fb950' : s <= 50 ? '#d29922' : s <= 75 ? '#f08000' : '#f85149';
+  return `<div class="risk-bar-wrap">
+    <div class="risk-bar-track"><div class="risk-bar-fill" style="width:${s}%;background:${color}"></div></div>
+    <span class="risk-val" style="color:${color}">${s}</span>
+  </div>`;
+}
+
+/**
+ * renderPagination — renders pagination controls into a container
+ */
+function renderPagination(containerId, currentPage, totalPages, onPageChange) {
+  const el = document.getElementById(containerId);
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  let html = `<button ${currentPage===1?'disabled':''} onclick="(${onPageChange.toString()})(${currentPage-1})">‹</button>`;
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1) {
+      html += `<button class="${p===currentPage?'active':''}" onclick="(${onPageChange.toString()})(${p})">${p}</button>`;
+    } else if (Math.abs(p - currentPage) === 2) {
+      html += `<span style="color:var(--text-muted);padding:0 4px">…</span>`;
+    }
+  }
+  html += `<button ${currentPage===totalPages?'disabled':''} onclick="(${onPageChange.toString()})(${currentPage+1})">›</button>`;
+  html += `<span class="pg-info">Page ${currentPage} of ${totalPages}</span>`;
+  el.innerHTML = html;
+}
+
+// ======================== INITIAL RENDER ========================
+// Initialize charts with empty data on page load
+updateCharts();
+updateDashboard();
+
+</script>
+</body>
+</html>
